@@ -41,7 +41,8 @@ class Subsonic():
     def make_request(self, request):
         with self._request(request) as response:
             body = json.loads(response.read())
-            dump_json(body)
+            # To DEBUG
+            # dump_json(body)
             return body
 
     @contextlib.contextmanager
@@ -68,10 +69,29 @@ def dump_json(data):
     sys.stdout.write('\n')
 
 def main():
-    config = read_config()
-    server = Subsonic(url=config['url'], username=config['username'], password=config['password'])
-    request = server.create_request("getRandomSongs", parameters={"size": 20})
-    response = server.make_request(request=request)
+    try:
+        # Server stuff
+        config = read_config()
+        server = Subsonic(url=config['url'], username=config['username'], password=config['password'])
+
+        # Request a random queue
+        request_songs = server.create_request("getRandomSongs", parameters={"size": 500})
+        request_songs_responses = server.make_request(request_songs)
+        songs = request_songs_responses['subsonic-response']['randomSongs']['song']
+
+        # Play loop
+        for song in songs:
+            song_id = song['id']
+            request_play = server.create_request("stream", parameters={'id': song_id})
+            request_info = server.make_request(server.create_request("getSong", parameters={'id': song_id}))
+            info = request_info['subsonic-response']['song']
+            print("Now playing: {} - {}\n".format(info['title'], info['artist']))
+            playsound(request_play)
+
+    except KeyboardInterrupt:
+        print("\n\nzero-sonic terminated by user.")    
+    
+    
     
 
 if __name__ == "__main__":
