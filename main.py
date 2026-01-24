@@ -1,6 +1,5 @@
 import configparser
 from playsound3 import playsound
-import libopensonic
 import contextlib
 import hashlib
 import json
@@ -9,6 +8,8 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from textual.app import App
+from textual.widgets import Footer, Header, Static, Label, Button
 
 
 class SubsonicError(Exception):
@@ -41,6 +42,11 @@ class Subsonic():
     def make_request(self, request):
         with self._request(request) as response:
             body = json.loads(response.read())
+            if 'error' in body:
+                dump_json(body)
+                raise SubsonicError(
+                    '{} - {}'.format(body['error'], body['message'])
+                )
             # To DEBUG
             # dump_json(body)
             return body
@@ -69,30 +75,77 @@ def dump_json(data):
     sys.stdout.write('\n')
 
 def main():
-    try:
-        # Server stuff
-        config = read_config()
-        server = Subsonic(url=config['url'], username=config['username'], password=config['password'])
+    Zerosonic().run()    
 
-        # Request a random queue
-        request_songs = server.create_request("getRandomSongs", parameters={"size": 500})
-        request_songs_responses = server.make_request(request_songs)
-        songs = request_songs_responses['subsonic-response']['randomSongs']['song']
+class Zerosonic(App):
+    BINDINGS = []
 
-        # Play loop
-        for song in songs:
-            song_id = song['id']
-            request_play = server.create_request("stream", parameters={'id': song_id})
-            request_info = server.make_request(server.create_request("getSong", parameters={'id': song_id}))
-            info = request_info['subsonic-response']['song']
-            print("Now playing: {} - {}\n".format(info['title'], info['artist']))
-            playsound(request_play)
+    CSS_PATH = 'zero-sonic.tcss'
 
-    except KeyboardInterrupt:
-        print("\n\nzero-sonic terminated by user.")    
+    def compose(self):
+        yield Header(show_clock=True)
+        yield Footer()
+        yield MusicPlayer()
+
+class MusicPlayer(Static):
+    BINDINGS = [
+        ('space', 'play_stop', 'Plays/stops current song'),
+        ('right', 'next_track', 'Changes to the next track'),
+    ]
+
+    # Server stuff
+    config = read_config()
+    server = Subsonic(url=config['url'], username=config['username'], password=config['password'])
+
+    # Request a random queue
+    request_songs = server.create_request("getRandomSongs", parameters={"size":500})
+    request_songs_responses = server.make_request(request_songs)
+    songs = request_songs_responses['subsonic-response']['randomSongs']['song']
+
+    CURRENT_TRACK = 0
+    playing_music = None
+
+
+    def get_info(self):
+        request_info = self.server.make_request(self.server.create_request("getSong", parameters={'id': self.songs[self.CURRENT_TRACK]['id']}))
+        info = request_info['subsonic-response']['song']
+        return Label("Now playing: {} - {}\n".format(info['title'], info['artist']), id="info-label")
     
+    info_label = Label()
+
+    def play_current_track(self):
+        request_play = self.server.create_request("stream", parameters={'id': self.songs[self.CURRENT_TRACK]['id']})
+        self.playing_music = playsound(request_play, block=False)
+        return None
     
-    
+    def stop_current_track(self):
+        try:
+            self.playing_music.stop()
+        except:
+            pass
+
+    def action_play_stop(self):
+        if self.playing_music is None:
+            self.play_current_track()
+        else:
+            try: 
+                self.stop_current_track()
+            except:
+                pass
+            self.playing_music = None
+
+    def action_next_track(self):
+        self.stop_current_track()
+        self.CURRENT_TRACK += 1
+        info_label = self.get_info()
+        self.play_current_track()
+
+    def compose(self):
+        yield Button("← PREV", id='prev')
+        info_label = self.get_info()
+        yield info_label
+        yield Button("SIG →", id='sig')
+
 
 if __name__ == "__main__":
     main()
