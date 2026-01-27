@@ -10,6 +10,7 @@ import urllib.parse
 import urllib.request
 from textual.app import App
 from textual.widgets import Footer, Header, Static, Label, Button
+import threading
 
 
 class SubsonicError(Exception):
@@ -77,20 +78,10 @@ def dump_json(data):
 def main():
     Zerosonic().run()    
 
-class Zerosonic(App):
-    BINDINGS = []
-
-    CSS_PATH = 'zero-sonic.tcss'
-
-    def compose(self):
-        yield Header(show_clock=True)
-        yield Footer()
-        yield MusicPlayer()
-
 class MusicPlayer(Static):
     BINDINGS = [
         ('space', 'play_stop', 'Plays/stops current song'),
-        ('right', 'next_track', 'Changes to the next track'),
+        ('right', 'next_track', 'Changes to the next track')
     ]
 
     # Server stuff
@@ -113,38 +104,60 @@ class MusicPlayer(Static):
     
     info_label = Label()
 
-    def play_current_track(self):
+    def play_loop(self):
+        playsound("https://music.afostyrio.com/rest/stream.view?id=h28XCV1a3AVu2J7TEAJmzl&u=afostyrio&p=Lui0703&v=1.13.0&c=AwesomeClientName&f=xml")
+        # while self.CURRENT_TRACK <= 499:
         request_play = self.server.create_request("stream", parameters={'id': self.songs[self.CURRENT_TRACK]['id']})
-        self.playing_music = playsound(request_play, block=False)
-        return None
-    
-    def stop_current_track(self):
+        self.playing_music = playsound(request_play)
+        # if self.playing_music == None:
+        #     break
+        self.CURRENT_TRACK += 1
+
+    play_thread = threading.Thread(target=play_loop)
+
+    def stop_music(self):
         try:
             self.playing_music.stop()
+            self.playing_music = None
+            self.play_thread.join()
         except:
-            pass
-
+            self.playing_music = None
+    
     def action_play_stop(self):
         if self.playing_music is None:
-            self.play_current_track()
+            self.play_thread.start()
         else:
-            try: 
-                self.stop_current_track()
-            except:
-                pass
-            self.playing_music = None
+            self.stop_music()
 
     def action_next_track(self):
-        self.stop_current_track()
+        self.stop_music()
         self.CURRENT_TRACK += 1
         info_label = self.get_info()
-        self.play_current_track()
+        self.play_thread.start()
 
     def compose(self):
         yield Button("← PREV", id='prev')
         info_label = self.get_info()
         yield info_label
         yield Button("SIG →", id='sig')
+
+class Zerosonic(App):
+    BINDINGS = [
+        ('q', 'quit', 'Quits the app')
+    ]
+
+    CSS_PATH = 'zero-sonic.tcss'
+
+    music_player = MusicPlayer()
+
+    def compose(self):
+        yield Header(show_clock=True)
+        yield Footer()
+        yield self.music_player
+
+    def action_quit(self):
+        self.music_player.stop_music()
+        self.exit()
 
 
 if __name__ == "__main__":
