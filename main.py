@@ -93,7 +93,9 @@ class MusicPlayer:
         self.songs = request_songs_responses['subsonic-response']['randomSongs']['song']    
         self.CURRENT_TRACK = 0
         self.music_playing = None
-        self.playback_thread = threading.Thread(target=self.begin_playback_at_current_track)
+        self.playback_thread = None
+        self.should_stop = threading.Event()
+        self._lock = threading.Lock()
 
     def get_current_track_info(self):
         request_info = self.server.make_request(self.server.create_request("getSong", parameters={'id': self.songs[self.CURRENT_TRACK]['id']}))
@@ -102,45 +104,66 @@ class MusicPlayer:
     
     def play_song(self, song_id):
         request_play = self.server.create_request("stream", parameters={'id' : song_id})
-        self.music_playing = playsound(request_play)
+        self.music_playing = playsound(request_play, block=False)
+        while self.music_playing.is_alive() and not self.should_stop.is_set():
+            pass
+        if self.should_stop.is_set():
+            self.music_playing.stop()
+            self.music_playing = None
 
     def begin_playback_at_current_track(self):
+        self.should_stop.clear()
         while self.CURRENT_TRACK <= 499:
             self.play_song(self.songs[self.CURRENT_TRACK]['id'])
             if self.music_playing is None:
                 break
-            self.CURRENT_TRACK += 1
+            with self._lock:
+                self.CURRENT_TRACK += 1
+        
+    def start_playback_thread(self):
+        self.playback_thread = threading.Thread(target=self.begin_playback_at_current_track)
+        self.playback_thread.start()
 
     def stop_playback(self):
         try:
-            self.music_playing.stop()
-            self.music_playing = None
+            self.should_stop.set()
             self.playback_thread.join()
-        except:
-            print("STOP PLAYBACK ERROR")
+        except: pass
+        self.music_playing = None
             
 
 class MusicWidget(Static):
     def __init__(self):
         super().__init__()
         self.music_player = MusicPlayer()
+        self.is_playing = False
 
     BINDINGS = [
-        ('space', 'play_stop', 'Plays/stops the random queue playback')
-        # ('right', 'next_track', 'Changes to the next track')
+        ('space', 'play_stop', 'Plays/stops the random queue playback'),
+        ('right', 'next_track', 'Changes to the next track'),
+        ('left', 'prev_track', 'Changes to previous track')
     ]
 
     def action_play_stop(self):
-        if self.music_player.music_playing is None:
-            self.music_player.playback_thread.start()
+        if not self.is_playing:
+            self.music_player.start_playback_thread()
+            self.is_playing = True
         else:
             self.music_player.stop_playback()
+            self.is_playing = False
 
-    # def action_next_track(self):
-    #     self.stop_music()
-    #     self.CURRENT_TRACK[0] += 1
-    #     info_label = self.get_info()
-    #     self.play_thread.start()
+    def action_next_track(self):
+        self.music_player.stop_playback()
+        self.music_player.CURRENT_TRACK += 1
+        # info_label = self.get_info()
+        self.music_player.start_playback_thread()
+
+    def action_prev_track(self):
+        self.music_player.stop_playback()
+        if self.music_player.CURRENT_TRACK > 0: self.music_player.CURRENT_TRACK -= 1
+        else: self.music_player.CURRENT_TRACK = 0
+        # info_label = self.get_info()
+        self.music_player.start_playback_thread()
 
     def compose(self):
         yield Button("← PREV", id='prev')
@@ -169,10 +192,9 @@ class Zerosonic(App):
 
 
 if __name__ == "__main__":
-    mp = MusicPlayer()
-    mp.playback_thread.start()
-    print("now playing")
-    time.sleep(5)
-    mp.stop_playback()
-
-    print("playback stopped")
+    # mp = MusicPlayer()
+    # mp.start_playback_thread()
+    # time.sleep(10)
+    # print(mp.music_playing)
+    main()
+    
