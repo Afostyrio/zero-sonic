@@ -100,8 +100,7 @@ class MusicPlayer:
         self.track_info = self.get_current_track_info()
 
     def get_current_track_info(self):
-        request_info = self.server.make_request(self.server.create_request("getSong", parameters={'id': self.songs[self.current_track]['id']}))
-        info = request_info['subsonic-response']['song']
+        info = self.songs[self.current_track]
         return info['title'], info['artist']
     
     def play_song(self, song_id):
@@ -137,8 +136,6 @@ class MusicPlayer:
 
 class MusicWidget(Static):
 
-    track_info = reactive(("", ""))
-
     def __init__(self):
         super().__init__()
         self.music_player = MusicPlayer()
@@ -153,27 +150,22 @@ class MusicWidget(Static):
     ]
 
     def compose(self):
-        yield Button("← PREV", id='prev')
+        yield Button("← PREV", id='prev', action='prev_track')
         yield self.info_label
-        yield Button("SIG →", id='sig')
+        yield Button("SIG →", id='sig', action='next_track')
 
     def on_mount(self):
-        self.update_label()
+        title, artist = self.track_info
+        self.info_label.update(f"{title} -- {artist}")
         self.set_interval(0.5, self.update_track_info)
 
     def update_track_info(self):
         with self.music_player._lock:
-            current_info = self.music_player.track_info        
+            current_info = self.music_player.get_current_track_info()        
         if current_info != self.track_info:
             self.track_info = current_info
-
-    def watch_track_info(self):
-        if self.is_mounted:
-            self.update_label()
-
-    def update_label(self):
-        title, artist = self.track_info
-        self.info_label.update(f"{title} -- {artist}")
+            title, artist = self.track_info
+            self.info_label.update(f"{title} -- {artist}")
 
     def action_play_stop(self):
         if not self.is_playing:
@@ -188,7 +180,6 @@ class MusicWidget(Static):
         self.music_player.current_track += 1
         self.music_player.start_playback_thread()
         self.update_track_info()
-        self.update_label()
 
     def action_prev_track(self):
         self.music_player.stop_playback()
@@ -196,7 +187,6 @@ class MusicWidget(Static):
         else: self.music_player.current_track = 0
         self.music_player.start_playback_thread()
         self.update_track_info()
-        self.update_label()
 
 class Zerosonic(App):
     BINDINGS = [
@@ -218,7 +208,6 @@ class Zerosonic(App):
 
 
 if __name__ == "__main__":
-    # mp = MusicPlayer()
     # mp.start_playback_thread()
     # time.sleep(10)
     # print(mp.music_playing)
