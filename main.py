@@ -178,15 +178,17 @@ class MusicWidget(Static):
     def action_next_track(self):
         self.music_player.stop_playback()
         self.music_player.current_track += 1
-        self.music_player.start_playback_thread()
         self.update_track_info()
+        self.music_player.start_playback_thread()
+        self.is_playing = True
 
     def action_prev_track(self):
         self.music_player.stop_playback()
         if self.music_player.current_track > 0: self.music_player.current_track -= 1
         else: self.music_player.current_track = 0
-        self.music_player.start_playback_thread()
         self.update_track_info()
+        self.music_player.start_playback_thread()
+        self.is_playing = True
 
 class Zerosonic(App):
     BINDINGS = [
